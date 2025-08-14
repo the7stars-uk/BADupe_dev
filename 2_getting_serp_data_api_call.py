@@ -5,8 +5,8 @@ import time
 # -- Step 0: Set Up Your Credentials --
 # IMPORTANT: Replace these with your actual login and API key from your DataForSEO dashboard.
 # For better security, use environment variables instead of hardcoding them.
-LOGIN = "xxx"
-API_KEY = "xxx"
+D4S_LOGIN = "xxx"
+D4S_API_KEY = "xxx"
 
 # ==============================================================================
 # -- Step 1: POST the Task to DataForSEO (Place Your Coffee Order) --
@@ -27,7 +27,7 @@ try:
     # Make the POST request to create the task
     response_post = requests.post(
         "https://api.dataforseo.com/v3/serp/google/organic/task_post",
-        auth=(LOGIN, API_KEY),
+        auth=(D4S_LOGIN, D4S_API_KEY),
         json=post_data
     )
     response_post.raise_for_status()  # Raise an exception for bad status codes
@@ -77,7 +77,7 @@ try:
     # Make the GET request to fetch the results
     response_get = requests.get(
         get_url,
-        auth=(LOGIN, API_KEY)
+        auth=(D4S_LOGIN, D4S_API_KEY)
     )
     response_get.raise_for_status()
 

@@ -5,13 +5,13 @@ import json
 
 # --- Configuration ---
 # Google Cloud BigQuery Configuration
-project_id = "organic-keyword-saver"
-dataset_id = "belladuke_dataset"
-table_id = "gads_keywords"
+project_id = "organic-xxx-saver"
+dataset_id = "xxx"
+table_id = "xxx"
 
 # DataForSEO API Configuration
-dataforseo_username = "amy.chan@the7stars.co.uk"
-dataforseo_password = "b8995de055eb43a9"
+dataforseo_username = "xxx"
+dataforseo_password = "xxx"
 
 def get_keywords_from_bigquery(client):
     """Fetches keywords and their details from a BigQuery table."""

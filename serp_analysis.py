@@ -5,7 +5,7 @@ import json
 
 # --- Configuration ---
 # Google Cloud BigQuery Configuration
-project_id = "organic-xxx-saver"
+project_id = "xxx"
 dataset_id = "xxx"
 table_id = "xxx"
 

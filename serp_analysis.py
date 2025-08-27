@@ -26,15 +26,17 @@ def get_keywords_from_bigquery(client):
         print(f"Error fetching data from BigQuery: {e}")
         return []
 
-def get_serp_data(keyword):
+def get_serp_data(keyword, device_type="desktop"):
     """
-    Pulls comprehensive SERP data (organic and paid) from the DataForSEO API.
+    Pulls comprehensive SERP data from the DataForSEO API for a specific device type.
     Using the 'organic' endpoint is more efficient as it includes ads data.
     """
+    print(f"Fetching {device_type} SERP data for '{keyword}'...")
     post_data = [{
         "language_code": "en",
         "location_code": 2826, # UK
-        "keyword": keyword
+        "keyword": keyword,
+        "device": device_type  # Specify "desktop" or "mobile"
     }]
     try:
         response = requests.post(
@@ -45,7 +47,30 @@ def get_serp_data(keyword):
         response.raise_for_status()  # Raise an exception for bad status codes
         return response.json()
     except requests.exceptions.RequestException as e:
-        print(f"Error fetching SERP data for '{keyword}': {e}")
+        print(f"Error fetching {device_type} SERP data for '{keyword}': {e}")
+        return None
+
+def get_serp_data_mobile(keyword, device_type="mobile"):
+    """
+    Pulls comprehensive SERP data (organic and paid) from the DataForSEO API.
+    Using the 'organic' endpoint is more efficient as it includes ads data.
+    """
+    post_data = [{
+        "language_code": "en",
+        "location_code": 2826, # UK
+        "keyword": keyword,
+        "device": device_type  # Can be "desktop" or "mobile"
+    }]
+    try:
+        response = requests.post(
+            "https://api.dataforseo.com/v3/serp/google/organic/live/advanced",
+            auth=(dataforseo_username, dataforseo_password),
+            json=post_data
+        )
+        response.raise_for_status()  # Raise an exception for bad status codes
+        return response.json()
+    except requests.exceptions.RequestException as e:
+        print(f"Error fetching {device_type} SERP data for '{keyword}': {e}")
         return None
 
 def check_for_competitor_ads(serp_data, domain_url):
@@ -76,7 +101,6 @@ def is_domain_ranked_number_one(serp_data, domain_url):
                 # Another domain is #1, so ours is not
                 return False
     return False
-
 
 def update_keyword_status(client, keyword, new_status):
     """Updates the status of a keyword in the BigQuery table."""
@@ -119,34 +143,46 @@ def main():
         domain_url = row['domain_url']
         new_status = None
 
-        print(f"Processing keyword: '{keyword}' with domain '{domain_url}'")
+        print(f"\nProcessing keyword: '{keyword}' with domain '{domain_url}'")
 
-        serp_data = get_serp_data(keyword)
+        # --- Step 1: Fetch SERP data for both desktop and mobile ---
+        desktop_serp_data = get_serp_data(keyword, device_type="desktop")
+        mobile_serp_data = get_serp_data(keyword, device_type="mobile")
 
-        if serp_data:
-            # 1. Primary Condition: Check for competitor paid ads
-            has_competitor_ad = check_for_competitor_ads(serp_data, domain_url)
-            
-            if has_competitor_ad:
-                print(f"-> Found competitor ad. Setting status to 'enabled'.")
-                new_status = 'ENABLED'
+        # --- Step 2: Analyze results for each device ---
+        # Default to False if data is missing to ensure we don't pause by mistake
+        desktop_has_competitor_ad = check_for_competitor_ads(desktop_serp_data, domain_url) if desktop_serp_data else False
+        mobile_has_competitor_ad = check_for_competitor_ads(mobile_serp_data, domain_url) if mobile_serp_data else False
+
+        desktop_is_ranked_one = is_domain_ranked_number_one(desktop_serp_data, domain_url) if desktop_serp_data else False
+        mobile_is_ranked_one = is_domain_ranked_number_one(mobile_serp_data, domain_url) if mobile_serp_data else False
+        
+        print(f"-> Desktop Analysis: Competitor Ad = {desktop_has_competitor_ad}, Ranked #1 = {desktop_is_ranked_one}")
+        print(f"-> Mobile Analysis: Competitor Ad = {mobile_has_competitor_ad}, Ranked #1 = {mobile_is_ranked_one}")
+
+        # --- Step 3: Apply the combined logic ---
+        
+        # PRIMARY CONDITION: Check for competitor ads first.
+        # If an ad exists on EITHER desktop OR mobile, enable the keyword.
+        if desktop_has_competitor_ad or mobile_has_competitor_ad:
+            print("-> Final Decision: Competitor ad found on at least one device. Setting status to 'ENABLED'.")
+            new_status = 'ENABLED'
+        else:
+            # SECONDARY CONDITION: Only runs if NO competitor ads were found on either device.
+            # Check organic ranking. We must be #1 on BOTH devices to pause.
+            print("-> No competitor ads found on either device. Checking organic ranking...")
+            if desktop_is_ranked_one and mobile_is_ranked_one:
+                print("-> Final Decision: Ranked #1 on both devices. Setting status to 'PAUSED'.")
+                new_status = 'PAUSED'
             else:
-                # 2. Secondary Condition: No competitor ads found, check organic ranking
-                print("-> No competitor ads found. Checking organic ranking...")
-                is_ranked_one = is_domain_ranked_number_one(serp_data, domain_url)
-                
-                if is_ranked_one:
-                    print(f"-> Domain is ranked #1 organically. Setting status to 'paused'.")
-                    new_status = 'PAUSED'
-                else:
-                    print(f"-> Domain is NOT ranked #1 organically. Setting status to 'enabled'.")
-                    new_status = 'ENABLED'
+                print("-> Final Decision: Not ranked #1 on at least one device. Setting status to 'ENABLED'.")
+                new_status = 'ENABLED'
 
-            # Update BigQuery only if the status has changed
-            if new_status and new_status != current_status:
-                update_keyword_status(bigquery_client, keyword, new_status)
-            elif new_status:
-                print(f"-> Status for '{keyword}' remains '{current_status}'. No update needed.")
+        # --- Step 4: Update BigQuery if the status has changed ---
+        if new_status and new_status != current_status:
+            update_keyword_status(bigquery_client, keyword, new_status)
+        elif new_status:
+            print(f"-> Status for '{keyword}' remains '{current_status}'. No update needed.")
 
 if __name__ == "__main__":
     main()

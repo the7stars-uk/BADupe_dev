@@ -1,0 +1,82 @@
+# workflow.yaml
+# This file defines the sequence of operations for the Google Ads automation process.
+# It is the "brain" of the operation, executed by Google Cloud Workflows.
+
+main:
+  params: [event]
+  steps:
+    # STEP 1: Initialize all the variables we will use.
+    # This keeps the configuration clean and easy to update.
+    - init:
+        assign:
+          # IMPORTANT: Replace these URLs with the actual URLs you get
+          # after deploying your services to Cloud Run.
+          - bq_updater_url: "**https://bq-updater-service-XXXXXXXX-uc.a.run.app**"
+          - ads_updater_url: "**https://ads-updater-service-XXXXXXXX-uc.a.run.app**"
+        next: log_start
+
+    # STEP 2: (Optional but Recommended) Log the start of the workflow for easier debugging.
+    - log_start:
+        call: sys.log
+        args:
+            text: "Starting Google Ads automation workflow."
+        next: call_bq_updater_service
+
+    # STEP 3: Call the first microservice (python file 1) to update BigQuery.
+    - call_bq_updater_service:
+        call: http.post
+        args:
+          url: ${bq_updater_url}
+          auth:
+            type: OIDC
+          # You could send data to your service in a JSON body if needed.
+          # For this example, we assume the service knows what to do without input.
+          # body:
+          #   key: "value"
+        result: bq_updater_result
+        next: check_bq_update_status
+
+    # STEP 4: Check if the first service succeeded. This is robust error handling.
+    - check_bq_update_status:
+        switch:
+          - condition: ${bq_updater_result.code >= 400}
+            next: handle_bq_update_failure
+        next: call_ads_updater_service
+
+    # STEP 5: Call the second microservice (python file 2) to update Google Ads.
+    # This step only runs if the previous one was successful.
+    - call_ads_updater_service:
+        call: http.post
+        args:
+          url: ${ads_updater_url}
+          auth:
+            type: OIDC
+        result: ads_updater_result
+        next: check_ads_update_status
+
+    # STEP 6: Check if the second service succeeded.
+    - check_ads_update_status:
+        switch:
+          - condition: ${ads_updater_result.code >= 400}
+            next: handle_ads_update_failure
+        next: success
+
+    # STEP 7: Define the successful end state of the workflow.
+    - success:
+        call: sys.log
+        args:
+            text: "Workflow completed successfully."
+        return: "Process finished with success."
+
+    # These are terminal steps for handling failures.
+    - handle_bq_update_failure:
+        call: sys.log
+        args:
+            text: ${"ERROR: The BigQuery update service failed with code: " + string(bq_updater_result.code) + ". Body: " + bq_updater_result.body}
+        return: "BigQuery update service failed."
+
+    - handle_ads_update_failure:
+        call: sys.log
+        args:
+            text: ${"ERROR: The Google Ads update service failed with code: " + string(ads_updater_result.code) + ". Body: " + ads_updater_result.body}
+        return: "Google Ads update service failed."

@@ -25,6 +25,7 @@ jobs:
         with:
           workload_identity_provider: 'projects/${{ secrets.GCP_PROJECT_NUMBER }}/locations/global/workloadIdentityPools/github-pool'
           service_account: 'github-actions-deployer@${{ secrets.GCP_PROJECT_ID }}.iam.gserviceaccount.com'
+          create_credentials_file: true
 
       - name: Deploy Service A
         uses: google-github-actions/deploy-cloudrun@v1
@@ -47,6 +48,7 @@ jobs:
         with:
           workload_identity_provider: 'projects/${{ secrets.GCP_PROJECT_NUMBER }}/locations/global/workloadIdentityPools/github-pool'
           service_account: 'github-actions-deployer@${{ secrets.GCP_PROJECT_ID }}.iam.gserviceaccount.com'
+          create_credentials_file: true
 
       - name: Deploy Service B
         uses: google-github-actions/deploy-cloudrun@v1

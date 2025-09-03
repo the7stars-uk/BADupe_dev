@@ -6,7 +6,6 @@ on:
       - main # Or whatever your main branch is called
 
 env:
-  PROJECT_ID: organic-keyword-saver # <-- REPLACE THIS
   REGION: europe-west2
   REPO_NAME: badupe-microservices-repo # The Artifact Registry repo from Step 2
 
@@ -20,8 +19,8 @@ jobs:
       - name: Authenticate to Google Cloud
         uses: google-github-actions/auth@v1
         with:
-          workload_identity_provider: 'projects/553463854789/locations/global/workloadIdentityPools/github-pool'
-          service_account: 'github-actions-deployer@organic-keyword-saver.iam.gserviceaccount.com'
+          workload_identity_provider: 'projects/${{ secrets.GCP_PROJECT_NUMBER }}/locations/global/workloadIdentityPools/github-pool'
+          service_account: 'github-actions-deployer@${{ secrets.GCP_PROJECT_ID }}.iam.gserviceaccount.com'
 
       - name: Deploy Service A
         uses: google-github-actions/deploy-cloudrun@v1
@@ -42,8 +41,8 @@ jobs:
       - name: Authenticate to Google Cloud
         uses: google-github-actions/auth@v1
         with:
-          workload_identity_provider: 'projects/553463854789/locations/global/workloadIdentityPools/github-pool'
-          service_account: 'github-actions-deployer@organic-keyword-saver.iam.gserviceaccount.com'
+          workload_identity_provider: 'projects/${{ secrets.GCP_PROJECT_NUMBER }}/locations/global/workloadIdentityPools/github-pool'
+          service_account: 'github-actions-deployer@${{ secrets.GCP_PROJECT_ID }}.iam.gserviceaccount.com'
 
       - name: Deploy Service B
         uses: google-github-actions/deploy-cloudrun@v1

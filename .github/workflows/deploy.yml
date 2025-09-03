@@ -5,6 +5,10 @@ on:
     branches:
       - main # Or whatever your main branch is called
 
+permissions:
+  contents: read
+  id-token: write
+
 env:
   REGION: europe-west2
   REPO_NAME: badupe-microservices-repo # The Artifact Registry repo from Step 2

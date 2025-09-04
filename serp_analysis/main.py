@@ -1,72 +1,101 @@
 import os
+import logging
 from flask import Flask
 from google.cloud import bigquery
 from google.cloud import secretmanager
+import google.cloud.logging  # Import the Cloud Logging client library
 import requests
 import json
+
+# --- Cloud Logging Setup ---
+# This helper connects your logs to Cloud Logging.
+# It's best practice to run this once when the service starts.
+try:
+    client = google.cloud.logging.Client()
+    # Attaches the Cloud Logging handler to the root Python logger
+    client.setup_logging(log_level=logging.INFO)
+    logging.info("Cloud Logging handler successfully attached.")
+except Exception as e:
+    # If the client fails, fall back to basic logging.
+    logging.basicConfig(level=logging.INFO)
+    logging.critical(f"Could not attach Google Cloud Logging handler: {e}", exc_info=True)
 
 app = Flask(__name__)
 
 # --- Configuration ---
-# Google Cloud Project ID from environment variable (set by Cloud Run)
 project_id = os.environ.get("GCP_PROJECT")
 
 def access_secret_version(secret_id, version_id="latest"):
-    """
-    Accesses a secret version from Google Cloud Secret Manager.
-    """
-    client = secretmanager.SecretManagerServiceClient()
-    name = f"projects/{project_id}/secrets/{secret_id}/versions/{version_id}"
-    response = client.access_secret_version(request={"name": name})
-    return response.payload.data.decode("UTF-8")
+    """Accesses a secret version from Google Cloud Secret Manager."""
+    try:
+        client = secretmanager.SecretManagerServiceClient()
+        name = f"projects/{project_id}/secrets/{secret_id}/versions/{version_id}"
+        response = client.access_secret_version(request={"name": name})
+        return response.payload.data.decode("UTF-8")
+    except Exception:
+        logging.critical(
+            "FATAL: Failed to access secret from Secret Manager.",
+            exc_info=True,
+            extra={'json_fields': {'secret_id': secret_id}}
+        )
+        raise # Re-raise exception to halt startup
 
-# Fetch configurations from Secret Manager
+# --- Global Initialization ---
 try:
+    logging.info("Fetching configuration from Secret Manager...")
     bq_project_id = access_secret_version("bigquery_project_id")
     bq_dataset_id = access_secret_version("bigquery_dataset_id")
     bq_table_id = access_secret_version("bigquery_table_id")
     dataforseo_username = access_secret_version("dataforseo_username")
     dataforseo_password = access_secret_version("dataforseo_password")
-except Exception as e:
-    print(f"Error fetching secrets from Secret Manager: {e}")
-    # Handle the error appropriately, maybe exit or raise an exception
-    # For now, we'll print and let it fail later
-    bq_project_id = None 
-    
+    logging.info("Configuration fetched successfully.")
+except Exception:
+    logging.critical("A critical error occurred during initialization. The service cannot operate.")
+    bq_project_id = None # Ensure this is None if startup fails
+
 def get_keywords_from_bigquery(client):
-    """Fetches keywords and their details from a BigQuery table."""
-    query = f"""
-        SELECT keyword, status, domain_url
-        FROM `{bq_project_id}.{bq_dataset_id}.{bq_table_id}`
-    """
+    """Fetches keywords from BigQuery with structured logging."""
+    full_table_id = f"{bq_project_id}.{bq_dataset_id}.{bq_table_id}"
+    query = f"SELECT keyword, status, domain_url FROM `{full_table_id}`"
     try:
+        logging.info(
+            "Fetching keywords from BigQuery.",
+            extra={'json_fields': {'table_id': full_table_id}}
+        )
         query_job = client.query(query)
-        return list(query_job)
-    except Exception as e:
-        print(f"Error fetching data from BigQuery: {e}")
-        return []
+        keywords = list(query_job)
+        logging.info(
+            f"Found {len(keywords)} keywords to process from BigQuery.",
+            extra={'json_fields': {'record_count': len(keywords), 'table_id': full_table_id}}
+        )
+        return keywords
+    except Exception:
+        logging.error(
+            "Error fetching data from BigQuery.",
+            exc_info=True,
+            extra={'json_fields': {'table_id': full_table_id, 'query': query}}
+        )
+        return None # Return None on failure
 
 def get_serp_data(keyword, device_type="desktop"):
-    """
-    Pulls comprehensive SERP data from the DataForSEO API for a specific device type.
-    """
-    print(f"Fetching {device_type} SERP data for '{keyword}'...")
-    post_data = [{
-        "language_code": "en",
-        "location_code": 2826, # UK
-        "keyword": keyword,
-        "device": device_type
-    }]
+    """Pulls SERP data from the DataForSEO API with structured logging."""
+    log_context = {'keyword': keyword, 'device': device_type}
+    logging.info(f"Fetching SERP data for '{keyword}' ({device_type})...", extra={'json_fields': log_context})
+    post_data = [{"language_code": "en", "location_code": 2826, "keyword": keyword, "device": device_type}]
     try:
         response = requests.post(
             "https://api.dataforseo.com/v3/serp/google/organic/live/advanced",
             auth=(dataforseo_username, dataforseo_password),
             json=post_data
         )
-        response.raise_for_status()
+        response.raise_for_status() # Raises an HTTPError for bad responses (4xx or 5xx)
         return response.json()
-    except requests.exceptions.RequestException as e:
-        print(f"Error fetching {device_type} SERP data for '{keyword}': {e}")
+    except requests.exceptions.RequestException:
+        logging.error(
+            f"Error fetching SERP data for '{keyword}' ({device_type}).",
+            exc_info=True, # Provides the full stack trace
+            extra={'json_fields': log_context}
+        )
         return None
 
 def check_for_competitor_ads(serp_data, domain_url):
@@ -95,12 +124,10 @@ def is_domain_ranked_number_one(serp_data, domain_url):
     return False
 
 def update_keyword_status(client, keyword, new_status):
-    """Updates the status of a keyword in the BigQuery table."""
-    query = f"""
-        UPDATE `{bq_project_id}.{bq_dataset_id}.{bq_table_id}`
-        SET status = @new_status
-        WHERE keyword = @keyword
-    """
+    """Updates the status of a keyword in the BigQuery table with structured logging."""
+    log_context = {'keyword': keyword, 'new_status': new_status}
+    full_table_id = f"{bq_project_id}.{bq_dataset_id}.{bq_table_id}"
+    query = f"UPDATE `{full_table_id}` SET status = @new_status WHERE keyword = @keyword"
     try:
         job_config = bigquery.QueryJobConfig(
             query_parameters=[
@@ -109,69 +136,90 @@ def update_keyword_status(client, keyword, new_status):
             ]
         )
         query_job = client.query(query, job_config=job_config)
-        query_job.result()
-        print(f"Successfully updated status for '{keyword}' to '{new_status}'")
-    except Exception as e:
-        print(f"Error updating status for '{keyword}': {e}")
+        query_job.result() # Wait for the job to complete
+        logging.info(
+            f"Successfully updated status for '{keyword}' to '{new_status}'",
+            extra={'json_fields': {**log_context, 'rows_affected': query_job.num_dml_affected_rows}}
+        )
+    except Exception:
+        logging.error(
+            f"Error updating status for '{keyword}'.",
+            exc_info=True,
+            extra={'json_fields': {**log_context, 'table_id': full_table_id, 'query': query}}
+        )
 
 @app.route("/", methods=["POST"])
 def main():
     """Main function to run the keyword status update process."""
+    logging.info("Processing request started.")
     if not bq_project_id:
-        return "Error: BigQuery project ID not configured from Secret Manager.", 500
+        error_msg = "FATAL: Service is not configured. Check startup logs for initialization errors."
+        logging.critical(error_msg)
+        return error_msg, 500
         
     try:
-        # The BigQuery client will use the Cloud Run service account's credentials
         bigquery_client = bigquery.Client(project=bq_project_id)
-    except Exception as e:
-        print(f"Failed to initialize BigQuery client: {e}")
+    except Exception:
+        logging.critical("Failed to initialize BigQuery client.", exc_info=True)
         return "Error initializing BigQuery client", 500
 
     keywords_data = get_keywords_from_bigquery(bigquery_client)
 
-    if not keywords_data:
-        print("No keywords found in the BigQuery table.")
+    if keywords_data is None: # Check for failure from the function
+        return "Processing halted due to an error while fetching from BigQuery.", 500
+    
+    if not keywords_data: # Check for empty (but successful) result
+        logging.info("No keywords found in the BigQuery table to process.")
         return "No keywords found", 200
 
     for row in keywords_data:
         keyword = row['keyword']
         current_status = row['status']
         domain_url = row['domain_url']
-        new_status = None
-
-        print(f"\nProcessing keyword: '{keyword}' with domain '{domain_url}'")
+        # This context will be added to all logs for this specific keyword's processing
+        keyword_context = {'keyword': keyword, 'domain_url': domain_url, 'current_status': current_status}
+        
+        logging.info(f"Processing keyword: '{keyword}'", extra={'json_fields': keyword_context})
 
         desktop_serp_data = get_serp_data(keyword, device_type="desktop")
         mobile_serp_data = get_serp_data(keyword, device_type="mobile")
 
-        desktop_has_competitor_ad = check_for_competitor_ads(desktop_serp_data, domain_url) if desktop_serp_data else False
-        mobile_has_competitor_ad = check_for_competitor_ads(mobile_serp_data, domain_url) if mobile_serp_data else False
-
-        desktop_is_ranked_one = is_domain_ranked_number_one(desktop_serp_data, domain_url) if desktop_serp_data else False
-        mobile_is_ranked_one = is_domain_ranked_number_one(mobile_serp_data, domain_url) if mobile_serp_data else False
+        desktop_has_competitor_ad = check_for_competitor_ads(desktop_serp_data, domain_url)
+        mobile_has_competitor_ad = check_for_competitor_ads(mobile_serp_data, domain_url)
+        desktop_is_ranked_one = is_domain_ranked_number_one(desktop_serp_data, domain_url)
+        mobile_is_ranked_one = is_domain_ranked_number_one(mobile_serp_data, domain_url)
         
-        print(f"-> Desktop Analysis: Competitor Ad = {desktop_has_competitor_ad}, Ranked #1 = {desktop_is_ranked_one}")
-        print(f"-> Mobile Analysis: Competitor Ad = {mobile_has_competitor_ad}, Ranked #1 = {mobile_is_ranked_one}")
+        # Log the analysis results for traceability
+        analysis_results = {
+            'desktop_competitor_ad': desktop_has_competitor_ad,
+            'mobile_competitor_ad': mobile_has_competitor_ad,
+            'desktop_ranked_one': desktop_is_ranked_one,
+            'mobile_ranked_one': mobile_is_ranked_one
+        }
+        logging.info("SERP analysis complete.", extra={'json_fields': {**keyword_context, **analysis_results}})
 
+        # Determine the new status based on the logic
+        new_status = None
         if desktop_has_competitor_ad or mobile_has_competitor_ad:
-            print("-> Final Decision: Competitor ad found on at least one device. Setting status to 'ENABLED'.")
             new_status = 'ENABLED'
+        elif desktop_is_ranked_one and mobile_is_ranked_one:
+            new_status = 'PAUSED'
         else:
-            print("-> No competitor ads found on either device. Checking organic ranking...")
-            if desktop_is_ranked_one and mobile_is_ranked_one:
-                print("-> Final Decision: Ranked #1 on both devices. Setting status to 'PAUSED'.")
-                new_status = 'PAUSED'
-            else:
-                print("-> Final Decision: Not ranked #1 on at least one device. Setting status to 'ENABLED'.")
-                new_status = 'ENABLED'
+            new_status = 'ENABLED'
+        
+        # Log the final decision
+        logging.info(
+            f"Final decision for '{keyword}': Set status to '{new_status}'.",
+            extra={'json_fields': {**keyword_context, 'new_status': new_status}}
+        )
 
         if new_status and new_status != current_status:
             update_keyword_status(bigquery_client, keyword, new_status)
         elif new_status:
-            print(f"-> Status for '{keyword}' remains '{current_status}'. No update needed.")
+            logging.info(f"Status for '{keyword}' remains '{current_status}'. No update needed.", extra={'json_fields': keyword_context})
 
+    logging.info("Processing complete.")
     return "Processing complete", 200
 
 if __name__ == "__main__":
-    # PORT is automatically set by Cloud Run.
     app.run(debug=True, host="0.0.0.0", port=int(os.environ.get("PORT", 8080)))

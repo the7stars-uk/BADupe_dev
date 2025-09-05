@@ -81,124 +81,109 @@ except Exception:
 # --- End Global Initialization ---
 
 
-def get_keyword_statuses_from_bigquery():
+def get_keyword_statuses_from_bigquery(bq_client):
     """
     Fetches keyword data from the specified BigQuery table with structured logging.
     """
     full_table_id = f"{bq_project_id}.{bq_dataset_id}.{bq_table_id}"
+    query = f"SELECT customer_id, adgroup_id, criterion_id, status, keyword, change_reason FROM `{full_table_id}`"
+    
     try:
-        client = bigquery.Client(project=bq_project_id)
-        query = f"SELECT customer_id, adgroup_id, criterion_id, status FROM `{full_table_id}`"
-        
         logging.info(
-            "Fetching keyword statuses from BigQuery.",
+            "Fetching keywords from BigQuery.",
             extra={'json_fields': {'table_id': full_table_id}}
         )
-        df = client.query(query).to_dataframe()
-        
+
+        df = bq_client.query(query).to_dataframe()
+
         logging.info(
             f"Found {len(df)} keywords to process from BigQuery.",
             extra={'json_fields': {'record_count': len(df), 'table_id': full_table_id}}
         )
         return df
+        
     except Exception:
         logging.error(
             "An error occurred while querying BigQuery.",
             exc_info=True, # Includes stack trace
-            extra={'json_fields': {'table_id': full_table_id}}
+            extra={'json_fields': {'table_id': full_table_id, 'query': query}}
         )
         return None
 
 
-def update_keyword_statuses_in_google_ads(customer_id, keywords_df):
+def update_keyword_statuses_in_google_ads(bq_client, customer_id, keywords_df, invocation_id):
     """
-    Updates keyword statuses using the Google Ads API with structured logging.
+    Updates keyword statuses and logs a separate, detailed history record for EACH keyword.
     """
+    prepared_operations = []
+    history_rows_to_log = []
     ad_group_criterion_service = googleads_client.get_service("AdGroupCriterionService")
-    operations = []
     
     for _, row in keywords_df.iterrows():
-        try:
-            operation = googleads_client.get_type("AdGroupCriterionOperation")
-            operation.update_mask.paths.append("status")
+        history_log_for_this_keyword = {
+            "invocation_id": invocation_id,
+            "log_timestamp": datetime.datetime.utcnow().isoformat(),
+            "customer_id": customer_id,
+            "adgroup_id": row['adgroup_id'],
+            "criterion_id": row['criterion_id'],
+            "keyword_text": row['keyword'],
+            "previous_status": row['status'],
+            "new_status": row['status'].upper(), # The new status we intend to set
+            "action": "STATUS_UPDATE",
+            "outcome": None, 
+            "change_reason": row.get('change_reason', 'N/A'), # This keyword's specific reason
+            "details": None 
+        }
+        
+        operation = googleads_client.get_type("AdGroupCriterionOperation")
+        operation.update_mask.paths.append("status")
 
-            criterion = operation.update
-            criterion.resource_name = ad_group_criterion_service.ad_group_criterion_path(
-                customer_id, row['adgroup_id'], row['criterion_id']
-            )
-
-            status_enum = googleads_client.get_type("AdGroupCriterionStatusEnum").AdGroupCriterionStatus
-            new_status_str = row['status'].upper()
-
-            if new_status_str == 'ENABLED':
-                criterion.status = status_enum.ENABLED
-            elif new_status_str == 'PAUSED':
-                criterion.status = status_enum.PAUSED
-            else:
-                logging.warning(
-                    "Skipping keyword with unknown status.",
-                    extra={'json_fields': {
-                        'customer_id': customer_id,
-                        'criterion_id': row['criterion_id'],
-                        'unknown_status': row['status']
-                    }}
-                )
-                continue
-            
-            operations.append(operation)
-        except Exception:
-            logging.error(
-                "Failed to build an operation for a keyword.",
-                exc_info=True,
-                extra={'json_fields': {'customer_id': customer_id, 'row_data': row.to_dict()}}
-            )
-
-    if not operations:
-        logging.warning(
-            "No valid operations to perform for customer.",
-            extra={'json_fields': {'customer_id': customer_id}}
+        criterion = operation.update
+        criterion.resource_name = ad_group_criterion_service.ad_group_criterion_path(
+            customer_id, row['adgroup_id'], row['criterion_id']
         )
+        status_enum = googleads_client.get_type("AdGroupCriterionStatusEnum").AdGroupCriterionStatus
+        new_status_str = row['status'].upper()
+
+        if new_status_str == 'ENABLED':
+            criterion.status = status_enum.ENABLED
+        elif new_status_str == 'PAUSED':
+            criterion.status = status_enum.PAUSED
+        else:
+            continue
+--
+        prepared_operations.append(operation)
+        history_rows_to_log.append(history_log_for_this_keyword)
+
+    if not prepared_operations:
+        logging.warning("No valid operations to perform for customer.", extra={'json_fields': {'customer_id': customer_id}})
         return
-
-    log_context = {'customer_id': customer_id, 'operation_count': len(operations)}
-
     if DRY_RUN:
-        logging.info(
-            "*** DRY RUN: Prepared keyword updates. No changes will be made. ***",
-            extra={'json_fields': log_context}
-        )
+        logging.info(f"*** DRY RUN: Prepared {len(prepared_operations)} updates. ***", extra={'json_fields': {'customer_id': customer_id}})
+        for log_row in history_rows_to_log:
+            log_row["outcome"] = "INFO"
+            log_row["details"] = "Dry run, no changes made."
+
         # Optional: Log an example operation for debugging
-        logging.debug("Example operation:", extra={'json_fields': {'example_op': operations[0]}})
-    else:
+        #logging.debug("Example operation:", extra={'json_fields': {'example_op': operations[0]}})
+   else:
         try:
-            logging.info(
-                "--- LIVE MODE: Sending keyword updates to Google Ads API... ---",
-                extra={'json_fields': log_context}
-            )
-            response = ad_group_criterion_service.mutate_ad_group_criteria(
-                customer_id=customer_id, operations=operations
-            )
-            logging.info(
-                "Successfully updated keywords in Google Ads.",
-                extra={'json_fields': {**log_context, 'results_count': len(response.results)}}
-            )
+            logging.info(f"--- LIVE MODE: Updating {len(prepared_operations)} keywords... ---", extra={'json_fields': {'customer_id': customer_id}})
+            ad_group_criterion_service.mutate_ad_group_criteria(customer_id=customer_id, operations=prepared_operations)
+            
+            for log_row in history_rows_to_log:
+                log_row["outcome"] = "SUCCESS"
+                log_row["details"] = "Keyword status updated successfully."
 
         except GoogleAdsException as ex:
-            # This logs the specific, structured errors from the Google Ads API
-            logging.error(
-                "GoogleAdsException occurred during keyword update.",
-                extra={'json_fields': {
-                    **log_context,
-                    'google_ads_errors': [e.message for e in ex.failure.errors],
-                    'request_id': ex.request_id
-                }}
-            )
-        except Exception:
-            logging.error(
-                "An unexpected error occurred during Google Ads mutation.",
-                exc_info=True,
-                extra={'json_fields': log_context}
-            )
+            logging.error("GoogleAdsException occurred.", extra={'json_fields': {'customer_id': customer_id}})
+            error_details = ", ".join([e.message for e in ex.failure.errors])
+            
+            for log_row in history_rows_to_log:
+                log_row["outcome"] = "FAILURE"
+                log_row["details"] = f"GoogleAdsException: {error_details} | Request ID: {ex.request_id}"
+
+    log_change_to_bigquery(bq_client, history_rows_to_log)
 
 @app.route("/", methods=["POST"])
 def main_handler():
@@ -213,7 +198,7 @@ def main_handler():
         logging.critical(error_msg)
         return error_msg, 500
 
-    keywords_df = get_keyword_statuses_from_bigquery()
+    keywords_df = get_keyword_statuses_from_bigquery(bq_client)
 
     if keywords_df is None:
         msg = "Processing halted due to an error while fetching from BigQuery."

@@ -6,6 +6,7 @@ from google.cloud import secretmanager
 import google.cloud.logging  # Import the Cloud Logging client library
 import requests
 import json
+from . import logic
 
 # --- Cloud Logging Setup ---
 # This helper connects your logs to Cloud Logging.
@@ -98,31 +99,6 @@ def get_serp_data(keyword, device_type="desktop"):
         )
         return None
 
-def check_for_competitor_ads(serp_data, domain_url):
-    """Analyzes SERP data to find non-matching paid ad domains."""
-    if not serp_data or 'tasks' not in serp_data or not serp_data['tasks'] or 'result' not in serp_data['tasks'][0] or not serp_data['tasks'][0]['result']:
-        return False
-
-    for item in serp_data['tasks'][0]['result'][0].get('items', []):
-        if item.get('type') == 'ads' and 'ads' in item:
-            for ad in item['ads']:
-                if 'domain' in ad and ad['domain'] != domain_url:
-                    return True
-    return False
-
-def is_domain_ranked_number_one(serp_data, domain_url):
-    """Checks if the specified domain is ranked #1 in organic results."""
-    if not serp_data or 'tasks' not in serp_data or not serp_data['tasks'] or 'result' not in serp_data['tasks'][0] or not serp_data['tasks'][0]['result']:
-        return False
-
-    for item in serp_data['tasks'][0]['result'][0].get('items', []):
-        if item.get('type') == 'organic' and item.get('rank_absolute') == 1:
-            if item.get('domain') == domain_url:
-                return True
-            else:
-                return False
-    return False
-
 def update_keyword_status(client, keyword, new_status):
     """Updates the status of a keyword in the BigQuery table with structured logging."""
     log_context = {'keyword': keyword, 'new_status': new_status}
@@ -184,11 +160,11 @@ def main():
         desktop_serp_data = get_serp_data(keyword, device_type="desktop")
         mobile_serp_data = get_serp_data(keyword, device_type="mobile")
 
-        desktop_has_competitor_ad = check_for_competitor_ads(desktop_serp_data, domain_url)
-        mobile_has_competitor_ad = check_for_competitor_ads(mobile_serp_data, domain_url)
-        desktop_is_ranked_one = is_domain_ranked_number_one(desktop_serp_data, domain_url)
-        mobile_is_ranked_one = is_domain_ranked_number_one(mobile_serp_data, domain_url)
-        
+        desktop_has_competitor_ad = logic.check_for_competitor_ads(desktop_serp_data, domain_url)
+        mobile_has_competitor_ad = logic.check_for_competitor_ads(mobile_serp_data, domain_url)
+        desktop_is_ranked_one = logic.is_domain_ranked_number_one(desktop_serp_data, domain_url)
+        mobile_is_ranked_one = logic.is_domain_ranked_number_one(mobile_serp_data, domain_url)
+
         # Log the analysis results for traceability
         analysis_results = {
             'desktop_competitor_ad': desktop_has_competitor_ad,
@@ -199,13 +175,11 @@ def main():
         logging.info("SERP analysis complete.", extra={'json_fields': {**keyword_context, **analysis_results}})
 
         # Determine the new status based on the logic
-        new_status = None
+        new_status = current_status
         if desktop_has_competitor_ad or mobile_has_competitor_ad:
             new_status = 'ENABLED'
         elif desktop_is_ranked_one and mobile_is_ranked_one:
             new_status = 'PAUSED'
-        else:
-            new_status = 'ENABLED'
         
         # Log the final decision
         logging.info(

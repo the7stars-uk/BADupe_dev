@@ -26,7 +26,7 @@ jobs:
           workload_identity_provider: 'projects/${{ secrets.GCP_PROJECT_NUMBER }}/locations/global/workloadIdentityPools/github-pool'
           service_account: 'github-actions-deployer@${{ secrets.GCP_PROJECT_ID }}.iam.gserviceaccount.com'
           create_credentials_file: true
-          audience: '//iam.googleapis.com/projects/${{ secrets.GCP_PROJECT_NUMBER }}/locations/global/workloadIdentityPools/github-pool/providers/github-provider'
+          audience: '//iam.googleapis.com/${{ secrets.GCP_WIF_PROVIDER }}'
 
       # VVVV ADD THIS NEW TEMPORARY STEP VVVV
       - name: Decode OIDC Token for Debugging
@@ -63,7 +63,7 @@ jobs:
           workload_identity_provider: 'projects/${{ secrets.GCP_PROJECT_NUMBER }}/locations/global/workloadIdentityPools/github-pool'
           service_account: 'github-actions-deployer@${{ secrets.GCP_PROJECT_ID }}.iam.gserviceaccount.com'
           create_credentials_file: true
-          audience: '//iam.googleapis.com/projects/${{ secrets.GCP_PROJECT_NUMBER }}/locations/global/workloadIdentityPools/github-pool/providers/github-provider'
+          audience: '//iam.googleapis.com/${{ secrets.GCP_WIF_PROVIDER }}'
 
       - name: Deploy Service B
         uses: google-github-actions/deploy-cloudrun@v2

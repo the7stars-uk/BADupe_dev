@@ -20,7 +20,7 @@ jobs:
         uses: actions/github-script@v6
         with:
           script: |
-            # This requests the OIDC token from GitHub's runtime
+            // This requests the OIDC token from GitHub's runtime
             const token = await core.getIDToken();
             
             // The token is a JWT (header.payload.signature)
@@ -32,4 +32,5 @@ jobs:
             console.log('--------------------------');
             
             console.log('\n>>> CRITICAL INFORMATION <<<');
-            console.log(`The exact 'repository' claim is: ${payload.repository}`);
+            // CORRECTED LINE: Using simple concatenation to avoid syntax conflict
+            console.log('The exact \'repository\' claim is: ' + payload.repository);

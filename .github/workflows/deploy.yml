@@ -26,7 +26,7 @@ jobs:
           workload_identity_provider: 'projects/${{ secrets.GCP_PROJECT_NUMBER }}/locations/global/workloadIdentityPools/github-badupe'
           service_account: 'github-actions-deployer@${{ secrets.GCP_PROJECT_ID }}.iam.gserviceaccount.com'
           create_credentials_file: true
-          audience: 'principalSet://iam.googleapis.com/projects/553463854789/locations/global/workloadIdentityPools/github-badupe/attribute.repository/the7stars-uk/BADupe_dev'
+          audience: '//iam.googleapis.com/projects/553463854789/locations/global/workloadIdentityPools/github-badupe/attribute.repository/the7stars-uk/BADupe_dev'
 
       # VVVV ADD THIS NEW TEMPORARY STEP VVVV
       - name: Decode OIDC Token for Debugging
@@ -63,7 +63,7 @@ jobs:
           workload_identity_provider: 'projects/${{ secrets.GCP_PROJECT_NUMBER }}/locations/global/workloadIdentityPools/github-badupe'
           service_account: 'github-actions-deployer@${{ secrets.GCP_PROJECT_ID }}.iam.gserviceaccount.com'
           create_credentials_file: true
-          audience: 'principalSet://iam.googleapis.com/projects/553463854789/locations/global/workloadIdentityPools/github-badupe/attribute.repository/the7stars-uk/BADupe_dev'
+          audience: '//iam.googleapis.com/projects/553463854789/locations/global/workloadIdentityPools/github-badupe/attribute.repository/the7stars-uk/BADupe_dev'
 
       - name: Deploy Service B
         uses: google-github-actions/deploy-cloudrun@v2

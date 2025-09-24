@@ -1,6 +1,5 @@
 Flask==3.0.0
 gunicorn==20.1.0
-pandas
 google-ads==19.0.0
 google-cloud-bigquery
 google-cloud-secret-manager

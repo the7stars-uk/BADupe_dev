@@ -27,4 +27,4 @@ COPY . .
 # STEP 6: Specify what to do when the "ON" button is pressed.
 # This is the final instruction. When the kitchen is activated (a container starts),
 # the robot chef should immediately start the production web server.
-CMD exec gunicorn --bind :$PORT --workers 1 --threads 8 --timeout 0 main:create_app()
+CMD exec gunicorn --bind 0.0.0.0:$PORT --workers 1 --threads 8 --timeout 0 main:create_app()

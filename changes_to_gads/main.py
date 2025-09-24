@@ -124,7 +124,7 @@ def create_app():
     # --- Configuration and Initialization now happens inside the factory ---
     try:
         logging.info("Starting service initialization...")
-        GCP_PROJECT_ID = os.environ.get("GCP_PROJECT")
+        GCP_PROJECT_ID = os.environ("GCP_PROJECT")
         app.config["DRY_RUN"] = os.environ.get("DRY_RUN", "True").lower() == "true"
         
         ads_config = {
@@ -142,11 +142,10 @@ def create_app():
         # Attach clients to the app object
         app.googleads_client = GoogleAdsClient.load_from_dict(ads_config)
         app.bq_client = bigquery.Client(project=app.config["BQ_PROJECT_ID"])
-        app.is_configured = True
         logging.info("Service initialized successfully.")
-    except Exception:
-        logging.critical("FATAL: A critical error occurred during initialization.")
-        app.is_configured = False
+    except Exception as e:
+        logging.critical(f"FATAL: A critical error occurred during initialization: {e}", exc_info=True)
+        raise
         
     @app.route("/", methods=["POST"])
     def main_handler():

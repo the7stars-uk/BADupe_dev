@@ -59,7 +59,7 @@ def update_keyword_statuses_in_google_ads(customer_id, keywords_df, invocation_i
         # This part is already correct from your original script. It tags every
         # history record with the invocation_id it received.
         history_log = {
-            "invocation_id": invocation_id, "log_timestamp": datetime.datetime.utcnow().isoformat(),
+            "invocation_id": invocation_id, "log_timestamp": datetime.datetime.now(datetime.UTC).isoformat(),
             "customer_id": customer_id, "adgroup_id": row['adgroup_id'], "criterion_id": row['criterion_id'],
             "keyword_text": row['keyword'], "previous_status": row['status'], "new_status": row['status'].upper(),
             "action": "STATUS_UPDATE", "outcome": None, "change_reason": row.get('change_reason', 'N/A'), "details": None
@@ -124,7 +124,7 @@ def create_app():
     # --- Configuration and Initialization now happens inside the factory ---
     try:
         logging.info("Starting service initialization...")
-        GCP_PROJECT_ID = os.environ("GCP_PROJECT")
+        GCP_PROJECT_ID = os.environ.get("GCP_PROJECT")
         app.config["DRY_RUN"] = os.environ.get("DRY_RUN", "True").lower() == "true"
         
         ads_config = {
@@ -142,6 +142,7 @@ def create_app():
         # Attach clients to the app object
         app.googleads_client = GoogleAdsClient.load_from_dict(ads_config)
         app.bq_client = bigquery.Client(project=app.config["BQ_PROJECT_ID"])
+        app.config['SERVICE_INITIALIZED'] = True
         logging.info("Service initialized successfully.")
     except Exception as e:
         logging.critical(f"FATAL: A critical error occurred during initialization: {e}", exc_info=True)
@@ -157,7 +158,7 @@ def create_app():
             extra={'json_fields': {'invocation_id': invocation_id}}
         )
 
-        if not current_app.is_configured:
+        if not current_app.config.get('SERVICE_INITIALIZED'):
             error_msg = "FATAL: Service is not configured. Check startup logs for initialization errors."
             logging.critical(error_msg)
             return error_msg, 500

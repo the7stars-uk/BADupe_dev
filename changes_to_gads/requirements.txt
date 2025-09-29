@@ -6,3 +6,4 @@ google-cloud-secret-manager
 google-cloud-logging
 pyarrow==14.0.1
 numpy==1.26.1
+pandas

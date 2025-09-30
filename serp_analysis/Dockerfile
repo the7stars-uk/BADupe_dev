@@ -3,7 +3,7 @@
 # STEP 1: Start with a pre-built foundation.
 # We are not building a kitchen from raw metal. We're starting with a
 # standard model that already has electricity and plumbing.
-FROM python:3.10-slim
+FROM python:3.10-bullseye
 
 # STEP 2: Set up the internal workspace.
 # We're telling the robot chef that all future work should happen
@@ -32,4 +32,5 @@ COPY . .
 # STEP 7: Specify what to do when the "ON" button is pressed.
 # This is the final instruction. When the kitchen is activated (a container starts),
 # the robot chef should immediately start the production web server.
+
 CMD exec gunicorn --bind :$PORT --workers 1 --threads 8 --timeout 0 main:app

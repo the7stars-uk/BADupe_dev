@@ -6,7 +6,7 @@ from google.cloud import secretmanager
 import google.cloud.logging  # Import the Cloud Logging client library
 import requests
 import json
-from . import logic
+import logic
 import atexit
 import signal
 

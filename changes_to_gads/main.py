@@ -10,16 +10,37 @@ from google.cloud import secretmanager
 import google.cloud.logging
 from google.ads.googleads.client import GoogleAdsClient
 from google.ads.googleads.errors import GoogleAdsException
+import atexit
+import signal
 
 # --- Cloud Logging Setup ---
+cloud_handler = None  # Initialize to None
+
 try:
     log_client = google.cloud.logging.Client()
-    log_client.setup_logging(log_level=logging.INFO)
-    logging.info("Cloud Logging handler successfully attached.")
+    cloud_handler = CloudLoggingHandler(log_client, name="my-prod-microservice")
+    
+    root_logger = logging.getLogger()
+    root_logger.setLevel(logging.INFO)
+    root_logger.addHandler(cloud_handler)
+    
+    logging.info("Cloud Logging handler successfully attached manually.")
 except Exception as e:
     logging.basicConfig(level=logging.INFO)
     logging.critical(f"Could not attach Google Cloud Logging handler: {e}", exc_info=True)
 
+def graceful_shutdown():
+    """Flushes the logging handler if it was successfully created."""
+    if cloud_handler:
+        print("Application is shutting down. Closing the Cloud Logging handler...")
+        cloud_handler.close()
+        print("Logs flushed and handler closed.")
+
+def sigterm_handler(_signum, _frame):
+    """Handler for the SIGTERM signal."""
+    logging.warning("SIGTERM received, initiating graceful shutdown.")
+    # The atexit hook will handle the rest, but you can add more logic here if needed.
+    exit(0)
 
 def access_secret_version(secret_id, project_id, version_id="latest"):
     try:
@@ -192,4 +213,7 @@ def create_app():
     
     # This part is now for local execution only
 if __name__ == "__main__":
+    atexit.register(graceful_shutdown)
+    signal.signal(signal.SIGTERM, sigterm_handler)
+    
     app.run(debug=True, host="0.0.0.0", port=int(os.environ.get("PORT", 8080)))

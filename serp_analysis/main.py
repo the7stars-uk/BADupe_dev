@@ -10,74 +10,101 @@ import json
 import logic
 import atexit
 import signal
+import google.auth
 
-app = Flask(__name__)
-
-# --- Cloud Logging Setup ---
-# This helper connects your logs to Cloud Logging.
-# It's best practice to run this once when the service starts.
+# ===================================================================
+# 1. IMMEDIATE LOGGING SETUP
+# Configure logging FIRST, so that any startup errors are captured.
+# ===================================================================
 cloud_handler = None
 try:
     log_client = google.cloud.logging.Client()
-    cloud_handler = CloudLoggingHandler(log_client, name="service-a") # Give it a name
+    cloud_handler = CloudLoggingHandler(log_client, name="service-a-prod")
     
     root_logger = logging.getLogger()
     root_logger.setLevel(logging.INFO)
     root_logger.addHandler(cloud_handler)
     
-    logging.info("Cloud Logging handler successfully attached manually.")
+    # This will be the first message in Cloud Logging
+    logging.info("Cloud Logging handler successfully attached.")
 except Exception as e:
+    # If cloud setup fails, fall back to basic console logging
     logging.basicConfig(level=logging.INFO)
     logging.critical(f"Could not attach Google Cloud Logging handler: {e}", exc_info=True)
+
+# ===================================================================
+# 2. DEFINE HELPER FUNCTIONS (Project ID and Secrets)
+# ===================================================================
+def get_gcp_project_id():
+    """Gets the GCP Project ID from the application's credentials."""
+    try:
+        _, project_id = google.auth.default()
+        if project_id:
+            # This log will now go to Cloud Logging successfully
+            logging.info(f"Successfully discovered GCP Project ID: {project_id}")
+            return project_id
+    except google.auth.exceptions.DefaultCredentialsError:
+        logging.critical("Could not automatically determine GCP project.")
+        return None
+
+def access_secret_version(secret_id, version_id="latest"):
+    """Accesses a secret version from Google Cloud Secret Manager."""
+    try:
+        client = secretmanager.SecretManagerServiceClient()
+        # This will use the 'project_id' variable defined below
+        name = f"projects/{project_id}/secrets/{secret_id}/versions/{version_id}"
+        response = client.access_secret_version(request={"name": name})
+        return response.payload.data.decode("UTF-8")
+    except Exception:
+        logging.critical(
+            f"FATAL: Failed to access secret '{secret_id}' from Secret Manager.",
+            exc_info=True,
+        )
+        raise
+
+# ===================================================================
+# 3. GLOBAL INITIALIZATION (Discover Project ID and Fetch Secrets)
+# Now that logging is running, safely initialize the app's config.
+# ===================================================================
+project_id = get_gcp_project_id()
+bq_project_id = None  # Initialize to None as a safeguard
+
+try:
+    if project_id:
+        logging.info("Fetching configuration from Secret Manager...")
+        bq_project_id = access_secret_version("bigquery_project_id")
+        bq_dataset_id = access_secret_version("bigquery_dataset_id")
+        bq_table_id = access_secret_version("bigquery_table_id")
+        dataforseo_username = access_secret_version("dataforseo_username")
+        dataforseo_password = access_secret_version("dataforseo_password")
+        logging.info("Configuration fetched successfully.")
+    else:
+        # This will be a critical log in Cloud Logging if discovery fails
+        logging.critical("Halting initialization because GCP Project ID could not be determined.")
+except Exception:
+    logging.critical("A critical error occurred during initialization. The service cannot operate.")
+    # bq_project_id remains None, which will halt processing later
+
+# ===================================================================
+# 4. SETUP FLASK APP AND GRACEFUL SHUTDOWN
+# ===================================================================
+app = Flask(__name__)
 
 def graceful_shutdown():
     """Flushes the logging handler if it was successfully created."""
     if cloud_handler:
-        print("Flask app is shutting down. Closing the Cloud Logging handler...")
         cloud_handler.close()
-        print("Logs flushed and handler closed.")
+        print("Logs flushed and handler closed.") # This print is for local debugging
 
 def sigterm_handler(_signum, _frame):
-    """Handler for the SIGTERM signal. Gunicorn also traps this."""
+    """Handler for the SIGTERM signal."""
     logging.warning("SIGTERM received, initiating graceful shutdown.")
-    # We can just exit; the atexit hook will handle the cleanup.
     exit(0)
 
 atexit.register(graceful_shutdown)
 signal.signal(signal.SIGTERM, sigterm_handler)
 
 logging.info("Graceful shutdown hooks have been registered.")
-
-# --- Configuration ---
-project_id = os.environ.get("GCP_PROJECT")
-
-def access_secret_version(secret_id, version_id="latest"):
-    """Accesses a secret version from Google Cloud Secret Manager."""
-    try:
-        client = secretmanager.SecretManagerServiceClient()
-        name = f"projects/{project_id}/secrets/{secret_id}/versions/{version_id}"
-        response = client.access_secret_version(request={"name": name})
-        return response.payload.data.decode("UTF-8")
-    except Exception:
-        logging.critical(
-            "FATAL: Failed to access secret from Secret Manager.",
-            exc_info=True,
-            extra={'json_fields': {'secret_id': secret_id}}
-        )
-        raise # Re-raise exception to halt startup
-
-# --- Global Initialization ---
-try:
-    logging.info("Fetching configuration from Secret Manager...")
-    bq_project_id = access_secret_version("bigquery_project_id")
-    bq_dataset_id = access_secret_version("bigquery_dataset_id")
-    bq_table_id = access_secret_version("bigquery_table_id")
-    dataforseo_username = access_secret_version("dataforseo_username")
-    dataforseo_password = access_secret_version("dataforseo_password")
-    logging.info("Configuration fetched successfully.")
-except Exception:
-    logging.critical("A critical error occurred during initialization. The service cannot operate.")
-    bq_project_id = None # Ensure this is None if startup fails
 
 def get_keywords_from_bigquery(client):
     """Fetches keywords from BigQuery with structured logging."""

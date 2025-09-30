@@ -5,5 +5,5 @@ google-cloud-bigquery
 google-cloud-secret-manager
 google-cloud-logging
 pyarrow==14.0.1
-numpy==1.26.1
+numpy==1.24.4
 pandas

@@ -7,21 +7,45 @@ import google.cloud.logging  # Import the Cloud Logging client library
 import requests
 import json
 from . import logic
+import atexit
+import signal
+
+app = Flask(__name__)
 
 # --- Cloud Logging Setup ---
 # This helper connects your logs to Cloud Logging.
 # It's best practice to run this once when the service starts.
+cloud_handler = None
 try:
-    client = google.cloud.logging.Client()
-    # Attaches the Cloud Logging handler to the root Python logger
-    client.setup_logging(log_level=logging.INFO)
-    logging.info("Cloud Logging handler successfully attached.")
+    log_client = google.cloud.logging.Client()
+    cloud_handler = CloudLoggingHandler(log_client, name="service-a") # Give it a name
+    
+    root_logger = logging.getLogger()
+    root_logger.setLevel(logging.INFO)
+    root_logger.addHandler(cloud_handler)
+    
+    logging.info("Cloud Logging handler successfully attached manually.")
 except Exception as e:
-    # If the client fails, fall back to basic logging.
     logging.basicConfig(level=logging.INFO)
     logging.critical(f"Could not attach Google Cloud Logging handler: {e}", exc_info=True)
 
-app = Flask(__name__)
+def graceful_shutdown():
+    """Flushes the logging handler if it was successfully created."""
+    if cloud_handler:
+        print("Flask app is shutting down. Closing the Cloud Logging handler...")
+        cloud_handler.close()
+        print("Logs flushed and handler closed.")
+
+def sigterm_handler(_signum, _frame):
+    """Handler for the SIGTERM signal. Gunicorn also traps this."""
+    logging.warning("SIGTERM received, initiating graceful shutdown.")
+    # We can just exit; the atexit hook will handle the cleanup.
+    exit(0)
+
+atexit.register(graceful_shutdown)
+signal.signal(signal.SIGTERM, sigterm_handler)
+
+logging.info("Graceful shutdown hooks have been registered.")
 
 # --- Configuration ---
 project_id = os.environ.get("GCP_PROJECT")
@@ -123,6 +147,8 @@ def update_keyword_status(client, keyword, new_status):
             exc_info=True,
             extra={'json_fields': {**log_context, 'table_id': full_table_id, 'query': query}}
         )
+
+
 
 @app.route("/", methods=["POST"])
 def main():

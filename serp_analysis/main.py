@@ -3,7 +3,8 @@ import logging
 from flask import Flask
 from google.cloud import bigquery
 from google.cloud import secretmanager
-import google.cloud.logging  # Import the Cloud Logging client library
+import google.cloud.logging  
+from google.cloud.logging_v2.handlers import CloudLoggingHandler
 import requests
 import json
 import logic

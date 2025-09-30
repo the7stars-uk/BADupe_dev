@@ -3,7 +3,7 @@
 # STEP 1: Start with a pre-built foundation.
 # We are not building a kitchen from raw metal. We're starting with a
 # standard model that already has electricity and plumbing.
-FROM python:3.10-bullseye
+FROM python:3.10-slim
 
 # STEP 2: Set up the internal workspace.
 # We're telling the robot chef that all future work should happen

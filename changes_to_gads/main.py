@@ -18,7 +18,7 @@ cloud_handler = None  # Initialize to None
 
 try:
     log_client = google.cloud.logging.Client()
-    cloud_handler = CloudLoggingHandler(log_client, name="my-prod-microservice")
+    cloud_handler = CloudLoggingHandler(log_client, name="service-b")
     
     root_logger = logging.getLogger()
     root_logger.setLevel(logging.INFO)

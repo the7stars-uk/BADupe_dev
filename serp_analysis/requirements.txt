@@ -2,14 +2,15 @@
 Flask==3.0.0
 gunicorn==20.1.0
 
-# Google Cloud libraries (all pinned)
-google-cloud-bigquery==3.3.5
-google-cloud-secret-manager==2.12.3
-google-cloud-logging==3.2.2
+# Pin the Google Cloud libraries to specific, compatible versions
+google-cloud-bigquery==3.11.4
+google-cloud-secret-manager==2.16.2
+google-cloud-logging==3.5.0
 
-# Explicitly add and pin dependencies of BigQuery for stability
-pyarrow
-numpy
+# Explicitly add and pin the critical dependencies
+# These versions are known to be compatible with the above google-cloud libraries
+pyarrow==12.0.1
+numpy==1.24.4
 
 # Other libraries
 requests==2.28.1

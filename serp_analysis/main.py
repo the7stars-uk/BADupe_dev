@@ -148,8 +148,6 @@ def update_keyword_status(client, keyword, new_status):
             extra={'json_fields': {**log_context, 'table_id': full_table_id, 'query': query}}
         )
 
-
-
 @app.route("/", methods=["POST"])
 def main():
     """Main function to run the keyword status update process."""

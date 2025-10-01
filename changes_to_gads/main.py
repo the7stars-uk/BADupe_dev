@@ -13,6 +13,7 @@ from google.ads.googleads.client import GoogleAdsClient
 from google.ads.googleads.errors import GoogleAdsException
 import atexit
 import signal
+import google.auth
 
 # --- Cloud Logging Setup ---
 cloud_handler = None  # Initialize to None
@@ -146,7 +147,14 @@ def create_app():
     # --- Configuration and Initialization now happens inside the factory ---
     try:
         logging.info("Starting service initialization...")
-        GCP_PROJECT_ID = os.environ.get("GCP_PROJECT")
+        try:
+            _, GCP_PROJECT_ID = google.auth.default()
+            logging.info(f"Successfully determined GCP Project ID: {GCP_PROJECT_ID}")
+        except google.auth.exceptions.DefaultCredentialsError:
+            logging.critical("Could not automatically determine GCP Project ID. "
+                             "Please ensure the application is running in a GCP environment "
+                             "or that the GOOGLE_APPLICATION_CREDENTIALS environment variable is set.")
+            raise
         app.config["DRY_RUN"] = os.environ.get("DRY_RUN", "True").lower() == "true"
         
         ads_config = {

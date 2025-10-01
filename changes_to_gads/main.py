@@ -8,7 +8,7 @@ from flask import Flask, current_app
 from google.cloud import bigquery
 from google.cloud import secretmanager
 import google.cloud.logging
-from google.cloud.logging_v2.handlers import CloudLoggingHandler
+from google.cloud.logging.handlers import CloudLoggingHandler
 from google.ads.googleads.client import GoogleAdsClient
 from google.ads.googleads.errors import GoogleAdsException
 import atexit

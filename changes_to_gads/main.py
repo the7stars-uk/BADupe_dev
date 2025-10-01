@@ -218,7 +218,7 @@ def create_app():
         
     return app
 
-    app = create_app()
+app = create_app()
     
     # This part is now for local execution only
 if __name__ == "__main__":

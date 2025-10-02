@@ -135,10 +135,53 @@ def update_keyword_statuses_in_google_ads(customer_id, keywords_df, invocation_i
     log_change_to_bigquery(bq_client, history_rows_to_log)
 
 def log_change_to_bigquery(bq_client, rows_to_insert):
-    """Placeholder for logging history to BigQuery."""
-    if rows_to_insert:
-        # We don't need to add the ID here, because it's already in the rows.
-        logging.info(f"Placeholder: Would log {len(rows_to_insert)} history rows to BQ.")
+    """
+    Inserts keyword change history rows into a specified BigQuery table.
+
+    Args:
+        bq_client: An authenticated BigQuery client instance.
+        rows_to_insert: A list of dictionaries, where each dictionary represents a row.
+    """
+    if not rows_to_insert:
+        logging.info("No history rows to log to BigQuery.")
+        return
+
+    # Extract the invocation_id from the first row for consistent logging
+    invocation_id = rows_to_insert[0].get('invocation_id', 'N/A')
+    
+    try:
+        # Get the project and dataset from the client and app context
+        project_id = current_app.config["BQ_PROJECT_ID"]
+        dataset_id = current_app.config["BQ_DATASET_ID"]
+        table_id = f"{project_id}.{dataset_id}.keyword_change_history"
+
+        logging.info(
+            f"Attempting to insert {len(rows_to_insert)} history rows into BigQuery table: {table_id}",
+            extra={'json_fields': {'table_id': table_id, 'record_count': len(rows_to_insert), 'invocation_id': invocation_id}}
+        )
+
+        # Use the insert_rows_json method to stream the data
+        errors = bq_client.insert_rows_json(table_id, rows_to_insert)
+
+        if not errors:
+            logging.info(
+                f"Successfully inserted {len(rows_to_insert)} rows into {table_id}.",
+                extra={'json_fields': {'table_id': table_id, 'invocation_id': invocation_id}}
+            )
+        else:
+            # Log insertion errors for each failed row
+            logging.error(
+                "Encountered errors while inserting rows into BigQuery.",
+                extra={'json_fields': {'table_id': table_id, 'errors': errors, 'invocation_id': invocation_id}}
+            )
+
+    except Exception as e:
+        # Catch any other exceptions during the process
+        logging.critical(
+            "A critical error occurred while trying to log changes to BigQuery.",
+            exc_info=True,
+            extra={'json_fields': {'invocation_id': invocation_id}}
+        )
 
 def create_app():
     """Application Factory Function"""

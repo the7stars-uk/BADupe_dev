@@ -82,7 +82,7 @@ def update_keyword_statuses_in_google_ads(customer_id, keywords_df, invocation_i
         # This part is already correct from your original script. It tags every
         # history record with the invocation_id it received.
         history_log = {
-            "invocation_id": invocation_id, "log_timestamp": datetime.datetime.now(datetime.UTC).isoformat(),
+            "invocation_id": invocation_id, "log_timestamp": datetime.datetime.now(datetime.timezone.utc).isoformat(),
             "customer_id": customer_id, "adgroup_id": row['adgroup_id'], "criterion_id": row['criterion_id'],
             "keyword_text": row['keyword'], "previous_status": row['status'], "new_status": row['status'].upper(),
             "action": "STATUS_UPDATE", "outcome": None, "change_reason": row.get('change_reason', 'N/A'), "details": None

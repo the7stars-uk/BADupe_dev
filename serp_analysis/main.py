@@ -151,30 +151,69 @@ def get_serp_data(keyword, device_type="desktop"):
         )
         return None
 
-def update_keyword_status(client, keyword, new_status):
-    """Updates the status of a keyword in the BigQuery table with structured logging."""
-    log_context = {'keyword': keyword, 'new_status': new_status}
+def update_keyword_data(client, keyword, new_status, competitor_domains):
+    """Updates the status and competitor domains of a keyword in the BigQuery table."""
+    log_context = {'keyword': keyword, 'new_status': new_status, 'competitors': competitor_domains}
     full_table_id = f"{bq_project_id}.{bq_dataset_id}.{bq_table_id}"
-    query = f"UPDATE `{full_table_id}` SET status = @new_status WHERE keyword = @keyword"
+    query = f"""
+        UPDATE `{full_table_id}`
+        SET status = @new_status, competitor_domains = @domains
+        WHERE keyword = @keyword
+    """
     try:
         job_config = bigquery.QueryJobConfig(
             query_parameters=[
                 bigquery.ScalarQueryParameter("new_status", "STRING", new_status),
+                bigquery.ArrayQueryParameter("domains", "STRING", competitor_domains),
                 bigquery.ScalarQueryParameter("keyword", "STRING", keyword),
             ]
         )
         query_job = client.query(query, job_config=job_config)
         query_job.result() # Wait for the job to complete
         logging.info(
-            f"Successfully updated status for '{keyword}' to '{new_status}'",
+            f"Successfully updated data for '{keyword}'.",
             extra={'json_fields': {**log_context, 'rows_affected': query_job.num_dml_affected_rows}}
         )
     except Exception:
         logging.error(
-            f"Error updating status for '{keyword}'.",
+            f"Error updating data for '{keyword}'.",
             exc_info=True,
             extra={'json_fields': {**log_context, 'table_id': full_table_id, 'query': query}}
         )
+
+def extract_competitor_domains(serp_data, my_domain):
+    """
+    Extracts the domains of paid ads and organic results ranking above my_domain.
+    (No changes in this function)
+    """
+    competitor_domains = set()
+    my_domain_rank = float('inf')
+
+    if not serp_data or 'tasks' not in serp_data or not serp_data['tasks'] or 'result' not in serp_data['tasks'][0] or not serp_data['tasks'][0]['result'] or 'items' not in serp_data['tasks'][0]['result'][0]:
+        logging.warning("SERP data is missing expected structure ('tasks'[0]['result'][0]['items']).")
+        return []
+
+    items = serp_data['tasks'][0]['result'][0]['items']
+
+    for item in items:
+        if item.get('type') == 'organic' and item.get('domain') == my_domain:
+            my_domain_rank = item.get('rank_absolute', float('inf'))
+            break
+
+    for item in items:
+        item_type = item.get('type')
+        domain = item.get('domain')
+
+        if not domain or domain == my_domain:
+            continue
+
+        if item_type == 'paid':
+            competitor_domains.add(domain)
+
+        if item_type == 'organic' and item.get('rank_absolute', float('inf')) < my_domain_rank:
+            competitor_domains.add(domain)
+
+    return list(competitor_domains)
 
 @app.route("/", methods=["POST"])
 def main():
@@ -239,10 +278,8 @@ def main():
             extra={'json_fields': {**keyword_context, 'new_status': new_status}}
         )
 
-        if new_status and new_status != current_status:
-            update_keyword_status(bigquery_client, keyword, new_status)
-        elif new_status:
-            logging.info(f"Status for '{keyword}' remains '{current_status}'. No update needed.", extra={'json_fields': keyword_context})
+        if new_status:
+            update_keyword_data(bigquery_client, keyword, new_status, extract_competitor_domains)
 
     logging.info("Processing complete.")
     return "Processing complete", 200

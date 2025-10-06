@@ -55,38 +55,52 @@ def access_secret_version(secret_id, project_id, version_id="latest"):
         raise
 
 def get_keyword_statuses_from_bigquery(bq_client, bq_project_id, bq_dataset_id, bq_table_id, invocation_id):
-    """Fetches keyword data, now including invocation_id in logs."""
+    """Fetches keyword data, now including the competitor_domains column."""
     full_table_id = f"{bq_project_id}.{bq_dataset_id}.{bq_table_id}"
-    query = f"SELECT customer_id, adgroup_id, criterion_id, status, keyword, change_reason FROM `{full_table_id}`"
+    query = f"SELECT customer_id, adgroup_id, criterion_id, status, keyword, change_reason, competitor_domains FROM `{full_table_id}`"
     try:
-        logging.info("Fetching keywords from BigQuery.", extra={'json_fields': {'table_id': full_table_id, 'invocation_id': invocation_id}})
+        logging.info("Fetching keywords (with competitor data) from BigQuery.", extra={'json_fields': {'table_id': full_table_id, 'invocation_id': invocation_id}})
         df = bq_client.query(query).to_dataframe()
         logging.info(f"Found {len(df)} keywords to process.", extra={'json_fields': {'record_count': len(df), 'invocation_id': invocation_id}})
         return df
     except Exception:
-        # --- FIX: ADD INVOCATION ID TO ERROR LOGS ---
         logging.error("An error occurred while querying BigQuery.", exc_info=True, extra={'json_fields': {'table_id': full_table_id, 'invocation_id': invocation_id}})
         return None
 
 def update_keyword_statuses_in_google_ads(customer_id, keywords_df, invocation_id):
-    """This function already correctly uses the invocation_id to build its history logs."""
+    """Updates keywords in Google Ads and creates a detailed history log."""
     googleads_client = current_app.googleads_client
     bq_client = current_app.bq_client
     DRY_RUN = current_app.config["DRY_RUN"]
-    
+
     prepared_operations = []
     history_rows_to_log = []
     ad_group_criterion_service = googleads_client.get_service("AdGroupCriterionService")
-    
+
     for _, row in keywords_df.iterrows():
-        # This part is already correct from your original script. It tags every
-        # history record with the invocation_id it received.
+        new_status_str = row['status'].upper()
+
+        details_message = None
+        competitors = row.get('competitor_domains') # Get the list of domains
+
+        # Check if the status is being set to ENABLED and if there are competitors listed.
+        if new_status_str == 'ENABLED' and competitors and len(competitors) > 0:
+            # If so, create a specific message for the log.
+            competitor_list_str = ", ".join(competitors)
+            details_message = f"Status set to ENABLED due to competitor activity from: {competitor_list_str}."
+        else:
+            # Otherwise, use a generic message.
+            details_message = f"Status updated to {new_status_str} based on SERP analysis."
+
         history_log = {
             "invocation_id": invocation_id, "log_timestamp": datetime.datetime.now(datetime.timezone.utc).isoformat(),
             "customer_id": customer_id, "adgroup_id": row['adgroup_id'], "criterion_id": row['criterion_id'],
-            "keyword_text": row['keyword'], "previous_status": row['status'], "new_status": row['status'].upper(),
-            "action": "STATUS_UPDATE", "outcome": None, "change_reason": row.get('change_reason', 'N/A'), "details": None
+            "keyword_text": row['keyword'], "previous_status": row['status'], "new_status": new_status_str,
+            "action": "STATUS_UPDATE", "outcome": None,
+            "change_reason": row.get('change_reason', 'N/A'),
+            "details": details_message  # <-- The new dynamic message is placed here
         }
+
         operation = googleads_client.get_type("AdGroupCriterionOperation")
         operation.update_mask.paths.append("status")
         criterion = operation.update
@@ -94,7 +108,6 @@ def update_keyword_statuses_in_google_ads(customer_id, keywords_df, invocation_i
             customer_id, row['adgroup_id'], row['criterion_id']
         )
         status_enum = googleads_client.get_type("AdGroupCriterionStatusEnum").AdGroupCriterionStatus
-        new_status_str = row['status'].upper()
 
         if new_status_str == 'ENABLED':
             criterion.status = status_enum.ENABLED
@@ -113,19 +126,15 @@ def update_keyword_statuses_in_google_ads(customer_id, keywords_df, invocation_i
         logging.info(f"*** DRY RUN: Prepared {len(prepared_operations)} updates. ***", extra={'json_fields': {'customer_id': customer_id, 'invocation_id': invocation_id}})
         for log_row in history_rows_to_log:
             log_row["outcome"] = "INFO"
-            log_row["details"] = "Dry run, no changes made."
-
-    # Optional: Log an example operation for debugging
-    #logging.debug("Example operation:", extra={'json_fields': {'example_op': operations[0]}})
+            # Overwrite the details message for a dry run to make it clear.
+            log_row["details"] = f"Dry run. Would have set status to {log_row['new_status']}. Reason: {log_row['details']}"
     else:
         try:
             logging.info(f"--- LIVE MODE: Updating {len(prepared_operations)} keywords... ---", extra={'json_fields': {'customer_id': customer_id, 'invocation_id': invocation_id}})
             ad_group_criterion_service.mutate_ad_group_criteria(customer_id=customer_id, operations=prepared_operations)
             for log_row in history_rows_to_log:
                 log_row["outcome"] = "SUCCESS"
-                log_row["details"] = "Keyword status updated successfully."
         except GoogleAdsException as ex:
-            # --- FIX: ADD INVOCATION ID TO ERROR LOGS ---
             logging.error("GoogleAdsException occurred.", extra={'json_fields': {'customer_id': customer_id, 'invocation_id': invocation_id}})
             error_details = ", ".join([e.message for e in ex.failure.errors])
             for log_row in history_rows_to_log:

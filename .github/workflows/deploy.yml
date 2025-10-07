@@ -3,7 +3,7 @@ name: Build and Deploy to Cloud Run
 on:
   push:
     branches:
-      - main 
+      - main
 
 permissions:
   contents: read
@@ -26,7 +26,7 @@ jobs:
           workload_identity_provider: 'projects/${{ secrets.GCP_PROJECT_NUMBER }}/locations/global/workloadIdentityPools/github-badupe/providers/github-provider'
           service_account: 'github-actions-deployer@${{ secrets.GCP_PROJECT_ID }}.iam.gserviceaccount.com'
           create_credentials_file: true
-          audience: 'https://iam.googleapis.com/projects/553463854789/locations/global/workloadIdentityPools/github-badupe/providers/github-provider'
+          audience: 'https://iam.googleapis.com/projects/${{ secrets.GCP_PROJECT_NUMBER }}/locations/global/workloadIdentityPools/github-badupe/providers/github-provider'
 
       # VVVV ADD THIS NEW TEMPORARY STEP VVVV
       - name: Decode OIDC Token for Debugging
@@ -63,7 +63,7 @@ jobs:
           workload_identity_provider: 'projects/${{ secrets.GCP_PROJECT_NUMBER }}/locations/global/workloadIdentityPools/github-badupe/providers/github-provider'
           service_account: 'github-actions-deployer@${{ secrets.GCP_PROJECT_ID }}.iam.gserviceaccount.com'
           create_credentials_file: true
-          audience: 'https://iam.googleapis.com/projects/553463854789/locations/global/workloadIdentityPools/github-badupe/providers/github-provider'
+          audience: 'https://iam.googleapis.com/projects/${{ secrets.GCP_PROJECT_NUMBER }}/locations/global/workloadIdentityPools/github-badupe/providers/github-provider'
 
       - name: Deploy Service B
         uses: google-github-actions/deploy-cloudrun@v2
@@ -72,9 +72,10 @@ jobs:
           region: ${{ env.REGION }}
           source: ./changes_to_gads # Tell it to look in the service-b folder
           # Service B will remain private (no --allow-unauthenticated flag)
-  
+
   deploy-service-c:
     runs-on: ubuntu-latest
+    needs: deploy-service-b # Assumes this job runs after deploy-service-b
     steps:
       - name: Checkout code
         uses: actions/checkout@v3
@@ -85,7 +86,7 @@ jobs:
           workload_identity_provider: 'projects/${{ secrets.GCP_PROJECT_NUMBER }}/locations/global/workloadIdentityPools/github-badupe/providers/github-provider'
           service_account: 'github-actions-deployer@${{ secrets.GCP_PROJECT_ID }}.iam.gserviceaccount.com'
           create_credentials_file: true
-          audience: 'https://iam.googleapis.com/projects/553463854789/locations/global/workloadIdentityPools/github-badupe/providers/github-provider'
+          audience: 'https://iam.googleapis.com/projects/${{ secrets.GCP_PROJECT_NUMBER }}/locations/global/workloadIdentityPools/github-badupe/providers/github-provider'
 
       - name: Deploy Service C
         uses: google-github-actions/deploy-cloudrun@v2

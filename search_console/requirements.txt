@@ -5,6 +5,7 @@ google-cloud-bigquery
 google-auth
 pandas
 db-dtypes
+gunicorn
 
 # For testing
 pytest

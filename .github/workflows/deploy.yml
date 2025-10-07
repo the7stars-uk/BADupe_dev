@@ -90,6 +90,6 @@ jobs:
       - name: Deploy Service C
         uses: google-github-actions/deploy-cloudrun@v2
         with:
-          service: search_console_api_service
+          service: search-console-api-service
           region: ${{ env.REGION }}
           source: ./search_console # Tell it to look in the search_console folder

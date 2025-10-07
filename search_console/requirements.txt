@@ -1,0 +1,11 @@
+# For the main script
+google-api-python-client
+google-cloud-secretmanager
+google-cloud-bigquery
+google-auth
+pandas
+db-dtypes
+
+# For testing
+pytest
+pytest-mock

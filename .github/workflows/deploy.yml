@@ -88,9 +88,9 @@ jobs:
           create_credentials_file: true
           audience: 'https://iam.googleapis.com/projects/${{ secrets.GCP_PROJECT_NUMBER }}/locations/global/workloadIdentityPools/github-badupe/providers/github-provider'
 
-      - name: Deploy Service C
+      - name: Deploy Service C as a Cloud Run Job
         uses: google-github-actions/deploy-cloudrun@v2
         with:
-          service: search-console-api-service
+          job: search-console-api-service
           region: ${{ env.REGION }}
           source: ./search_console # Tell it to look in the search_console folder

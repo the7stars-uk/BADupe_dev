@@ -72,3 +72,24 @@ jobs:
           region: ${{ env.REGION }}
           source: ./changes_to_gads # Tell it to look in the service-b folder
           # Service B will remain private (no --allow-unauthenticated flag)
+  
+  deploy-search_console_api_service:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: 'projects/${{ secrets.GCP_PROJECT_NUMBER }}/locations/global/workloadIdentityPools/github-badupe/providers/github-provider'
+          service_account: 'github-actions-deployer@${{ secrets.GCP_PROJECT_ID }}.iam.gserviceaccount.com'
+          create_credentials_file: true
+          audience: 'https://iam.googleapis.com/projects/553463854789/locations/global/workloadIdentityPools/github-badupe/providers/github-provider'
+
+      - name: Deploy Search Console API Service
+        uses: google-github-actions/deploy-cloudrun@v2
+        with:
+          service: search_console_api_service
+          region: ${{ env.REGION }}
+          source: ./search_console # Tell it to look in the search_console folder

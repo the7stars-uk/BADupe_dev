@@ -1,6 +1,6 @@
 # For the main script
 google-api-python-client
-google-cloud-secretmanager
+google-cloud-secret-manager
 google-cloud-bigquery
 google-auth
 pandas

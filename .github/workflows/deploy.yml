@@ -73,7 +73,7 @@ jobs:
           source: ./changes_to_gads # Tell it to look in the service-b folder
           # Service B will remain private (no --allow-unauthenticated flag)
   
-  deploy-search_console_api_service:
+  deploy-service-c:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
@@ -87,7 +87,7 @@ jobs:
           create_credentials_file: true
           audience: 'https://iam.googleapis.com/projects/553463854789/locations/global/workloadIdentityPools/github-badupe/providers/github-provider'
 
-      - name: Deploy Search Console API Service
+      - name: Deploy Service C
         uses: google-github-actions/deploy-cloudrun@v2
         with:
           service: search_console_api_service

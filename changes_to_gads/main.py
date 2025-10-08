@@ -207,7 +207,9 @@ def create_app():
                              "Please ensure the application is running in a GCP environment "
                              "or that the GOOGLE_APPLICATION_CREDENTIALS environment variable is set.")
             raise
+ #------------------- HERE TO CONFIGURE DRY RUN!!! ---------------------------------#
         app.config["DRY_RUN"] = os.environ.get("DRY_RUN", "True").lower() == "true"
+ #------------------- HERE TO CONFIGURE DRY RUN!!! ---------------------------------#
         
         ads_config = {
             "developer_token": access_secret_version("google-ads-developer-token", GCP_PROJECT_ID),

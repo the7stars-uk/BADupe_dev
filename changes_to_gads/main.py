@@ -208,7 +208,7 @@ def create_app():
                              "or that the GOOGLE_APPLICATION_CREDENTIALS environment variable is set.")
             raise
  #------------------- HERE TO CONFIGURE DRY RUN!!! ---------------------------------#
-        app.config["DRY_RUN"] = os.environ.get("DRY_RUN", "True").lower() == "true"
+        app.config["DRY_RUN"] = os.environ.get("DRY_RUN", "True").lower() == "false"
  #------------------- HERE TO CONFIGURE DRY RUN!!! ---------------------------------#
         
         ads_config = {

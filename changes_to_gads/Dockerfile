@@ -17,8 +17,9 @@ COPY requirements.txt .
 
 # STEP 4: Install the ingredients.
 # The robot chef goes to the store and installs these exact ingredients
-# onto the kitchen shelves. This is done during the build.
-RUN pip install --no-cache-dir -r requirements.txt
+# onto the kitchen shelves. This is done during the build. Updated 13th Oct
+RUN pip install --no-cache-dir --upgrade pip && \
+    pip install --no-cache-dir -r requirements.txt
 
 # STEP 5: Bring in the recipe itself (your code).
 # Now that the kitchen is prepped, we copy your Python scripts in.

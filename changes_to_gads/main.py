@@ -212,11 +212,16 @@ def create_app():
  #------------------- HERE TO CONFIGURE DRY RUN!!! ---------------------------------#
         
         ads_config = {
-            "developer_token": access_secret_version("google-ads-developer-token", GCP_PROJECT_ID),
-            "client_id": access_secret_version("google-ads-client-id", GCP_PROJECT_ID),
-            "client_secret": access_secret_version("google-ads-client-secret", GCP_PROJECT_ID),
-            "refresh_token": access_secret_version("google-ads-refresh-token", GCP_PROJECT_ID),
-            "login_customer_id": access_secret_version("google-ads-customer-id", GCP_PROJECT_ID),
+            "developer_token": access_secret_version("standard-access-developer-token", GCP_PROJECT_ID),
+            "client_id": access_secret_version("original-google-ads-client-id", GCP_PROJECT_ID),
+            "client_secret": access_secret_version("original-google-ads-client-secret", GCP_PROJECT_ID),
+            "refresh_token": access_secret_version("google-ads-refresh-token", GCP_PROJECT_ID), ## Changed 15th Oct: "refresh_token": access_secret_version("google-ads-refresh-token", GCP_PROJECT_ID),
+
+            "login_customer_id": "8623024439", ## 14th Oct Edit: Testing login customer ID use.
+            ## 14th Oct: Testing use of MCC details here. # 
+            
+            # "login_customer_id": access_secret_version("google-ads-customer-id", GCP_PROJECT_ID),  
+            "api_version": 'v19', ## Changed 13th Oct, didn't have access to Github repo to push there, needs to be explicitly set
             "use_proto_plus": True
         }
         app.config["BQ_PROJECT_ID"] = access_secret_version("bigquery_project_id", GCP_PROJECT_ID)
@@ -225,6 +230,8 @@ def create_app():
         
         # Attach clients to the app object
         app.googleads_client = GoogleAdsClient.load_from_dict(ads_config)
+
+
         app.bq_client = bigquery.Client(project=app.config["BQ_PROJECT_ID"])
         app.config['SERVICE_INITIALIZED'] = True
         logging.info("Service initialized successfully.")

@@ -285,15 +285,15 @@ def main():
 
             # 2. Combine the lists and remove duplicates using a set
             all_competitors = list(set(desktop_competitors + mobile_competitors))
+
+            # 3. Pass the RESULT (the list) to the update function.
+            update_keyword_data(bigquery_client, keyword, new_status, all_competitors)
             
-            # 3. Log the combined list for debugging/traceability
+            # 4. Log the combined list for debugging/traceability
             logging.info(
                 f"Found {len(all_competitors)} unique competitor domains for '{keyword}'.",
                 extra={'json_fields': {**keyword_context, 'competitors': all_competitors}}
             )
-
-            # 4. Call the update function with the FINAL LIST of competitors
-            update_keyword_data(bigquery_client, keyword, new_status, all_competitors)
 
     logging.info("Processing complete.")
     return "Processing complete", 200

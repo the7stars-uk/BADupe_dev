@@ -278,7 +278,7 @@ def main():
             extra={'json_fields': {**keyword_context, 'new_status': new_status}}
         )
 
-         if new_status:
+        if new_status:
             # 1. Extract competitors from both desktop and mobile SERP data
             desktop_competitors = extract_competitor_domains(desktop_serp_data, domain_url)
             mobile_competitors = extract_competitor_domains(mobile_serp_data, domain_url)

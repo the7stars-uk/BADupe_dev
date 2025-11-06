@@ -142,12 +142,35 @@ def get_serp_data(keyword, device_type="desktop"):
             json=post_data
         )
         response.raise_for_status() # Raises an HTTPError for bad responses (4xx or 5xx)
+
+        # Log the raw text of the response before trying to parse it as JSON.
+        # This is the most important step for debugging your specific error.
+        raw_response_text = response.text
+        logging.info(
+            f"Received SERP API response for '{keyword}' ({device_type}).",
+            extra={'json_fields': {**log_context, 'api_response_body': raw_response_text}}
+        )
+        # ========================================================
+
         return response.json()
-    except requests.exceptions.RequestException:
+    except requests.exceptions.RequestException as e:
         logging.error(
-            f"Error fetching SERP data for '{keyword}' ({device_type}).",
-            exc_info=True, # Provides the full stack trace
-            extra={'json_fields': log_context}
+            f"Error fetching SERP data for '{keyword}' ({device_type}). Status Code: {e.response.status_code if e.response else 'N/A'}",
+            exc_info=True, 
+            extra={'json_fields': {
+                **log_context, 
+                # Also log the response body on error, as it often contains the reason.
+                'api_error_body': e.response.text if e.response else 'No response body'
+            }}
+        )
+        return None
+    except json.JSONDecodeError:
+        # This new exception handles cases where the response was successful (e.g., status 200)
+        # but the body was not valid JSON (e.g., an HTML CAPTCHA page).
+        logging.error(
+            f"Failed to decode JSON from SERP API for '{keyword}' ({device_type}). The response was not valid JSON.",
+            exc_info=True,
+            extra={'json_fields': {**log_context, 'api_response_body': raw_response_text}} # Log the problematic text
         )
         return None
 
